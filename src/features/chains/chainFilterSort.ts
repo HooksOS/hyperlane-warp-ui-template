@@ -1,9 +1,11 @@
 import { ProtocolType } from '@hyperlane-xyz/utils';
 
-import { ChainInfo } from './hooks';
+import { config } from '../../consts/config';
+import type { ChainInfo } from './hooks';
 
 // ── Sort ────────────────────────────────────────────────────────────
 export enum ChainSortBy {
+  Featured = 'featured',
   Name = 'name',
   ChainId = 'chain id',
   Protocol = 'protocol',
@@ -20,7 +22,7 @@ export interface SortState {
 }
 
 export const defaultSortState: SortState = {
-  sortBy: ChainSortBy.Name,
+  sortBy: ChainSortBy.Featured,
   sortOrder: SortOrder.Asc,
 };
 
@@ -44,7 +46,23 @@ export function isFilterActive(filter: ChainFilterState): boolean {
   return filter.type !== undefined || filter.protocol !== undefined;
 }
 
-export const sortOptions = [ChainSortBy.Name, ChainSortBy.ChainId, ChainSortBy.Protocol];
+export const sortOptions = [
+  ChainSortBy.Featured,
+  ChainSortBy.Name,
+  ChainSortBy.ChainId,
+  ChainSortBy.Protocol,
+];
+
+const featuredChainRank = new Map<string, number>();
+for (const [i, chainName] of config.featuredChains.entries()) {
+  const existingRank = featuredChainRank.get(chainName);
+  if (existingRank !== undefined) {
+    throw new Error(
+      `Duplicate featured chain in config.featuredChains: ${chainName} at indices ${existingRank} and ${i}`,
+    );
+  }
+  featuredChainRank.set(chainName, i);
+}
 
 // ── Combined search + filter + sort (mirrors widgets' chainSearch) ──
 export function chainSearch({
@@ -85,6 +103,19 @@ export function chainSearch({
         // Disabled chains always at the bottom
         if (c1.disabled && !c2.disabled) return 1;
         if (!c1.disabled && c2.disabled) return -1;
+
+        if (sort.sortBy === ChainSortBy.Featured) {
+          const c1Rank = featuredChainRank.get(c1.name);
+          const c2Rank = featuredChainRank.get(c2.name);
+          const c1Featured = c1Rank !== undefined;
+          const c2Featured = c2Rank !== undefined;
+
+          if (c1Featured && c2Featured) {
+            return sort.sortOrder === SortOrder.Asc ? c1Rank - c2Rank : c2Rank - c1Rank;
+          }
+          if (c1Featured && !c2Featured) return -1;
+          if (!c1Featured && c2Featured) return 1;
+        }
 
         if (sort.sortBy === ChainSortBy.ChainId) {
           const result = c1.chainId
